@@ -1,0 +1,17 @@
+{
+	"camera_id":
+	[
+		{"name": "CS240-USB2.0", "protocol": "UVC_I2C", "parse_protocol": "LINE_ALTER", "vid": "2D90", "pid": "00A2"},
+		{"name": "CS240", "protocol": "UVC_I2C", "parse_protocol": "LINE_ALTER", "vid": "2D90", "pid": "00A3"},
+		{"name": "CS480-USB2.0", "protocol": "UVC_I2C", "parse_protocol": "LINE_ALTER", "vid": "2D90", "pid": "00C2"},
+		{"name": "CS480", "protocol": "UVC_I2C", "parse_protocol": "LINE_ALTER", "vid": "2D90", "pid": "00C3"},
+
+		{"name": "LH1080-USB2.0", "protocol": "UVC_I2C", "parse_protocol": "TAG", "vid": "2D90", "pid": "01F2"},
+		{"name": "LH1080", "protocol": "UVC_I2C", "parse_protocol": "TAG", "vid": "2D90", "pid": "01F3"},
+
+		{"name": "PSP010-400-USB2.0", "protocol": "UVC_I2C", "parse_protocol": "TAG", "vid": "2D90", "pid": "00D2"},
+		{"name": "PSP010-400", "protocol": "UVC_I2C", "parse_protocol": "TAG", "vid": "2D90", "pid": "00D3"},
+		
+		{"name": "MoveSenseRectify", "protocol": "LIBUSB_I2C", "parse_protocol": "FRAME_ALTER", "vid": "2D90", "pid": "012E"}
+	]
+}

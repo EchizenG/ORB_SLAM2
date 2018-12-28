@@ -1,0 +1,36 @@
+{
+
+	"default": 
+	{
+		"resolution": {"w": 640, "h": 480},
+		"framerate": 25,
+		"mode": "LRD"
+	},
+	
+	"resolution":
+	[
+		{"w": 640, "h": 480}
+	],
+	
+	"framerate":
+	[
+		25,
+		30,
+		50
+	],
+	
+	"mode":
+	[
+		"LR",
+		"LD",
+		"LRD"
+	],
+	
+	"disparity":
+	{
+		"type": 96,
+		"bpp": 8
+	}
+	
+}
+ 

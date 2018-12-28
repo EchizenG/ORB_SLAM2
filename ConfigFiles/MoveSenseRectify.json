@@ -1,0 +1,29 @@
+{
+
+	"default": 
+	{
+		"resolution": {"w": 640, "h": 480},
+		"framerate": 30,
+		"mode": "LR"
+	},
+	
+	"resolution":
+	[
+		{"w": 640, "h": 480},
+		{"w": 320, "h": 240}
+	],
+	
+	"framerate":
+	[
+		30,
+		50
+	],
+	
+	"mode":
+	[
+		"LR",
+		"LD"
+	]
+	
+}
+ 

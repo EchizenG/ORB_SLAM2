@@ -19,146 +19,166 @@
 */
 
 
-#include<iostream>
-#include<algorithm>
-#include<fstream>
-#include<iomanip>
-#include<chrono>
+#include <iostream>
+#include <algorithm>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
+#include <stdio.h>
+#include <signal.h>
+#include <errno.h>
+#include <unistd.h>
+#include <time.h>
 
-#include<opencv2/core/core.hpp>
+#include <opencv2/core/core.hpp>
+#include "MoveSenseCamera.h"
 
-#include<System.h>
+#include <System.h>
 
 using namespace std;
+using namespace movesense;
 
-void LoadImages(const string &strPathToSequence, vector<string> &vstrImageLeft,
-                vector<string> &vstrImageRight, vector<double> &vTimestamps);
+static unsigned char willExit = 0;
+static int handexit = 1;
+static int frameCnt = 0;
+static double time1=cv::getTickCount(), time2=0, timeT=0;
+
+static __sighandler_t exitHandler();
+static bool initCamera(MoveSenseCamera *camera, cv::Mat &left, cv::Mat &right, cv::Mat &disparity);
+static void getImage(MoveSenseCamera *camera, cv::Mat &left, cv::Mat &right, cv::Mat &disparity);
 
 int main(int argc, char **argv)
 {
-    if(argc != 4)
-    {
-        cerr << endl << "Usage: ./stereo_kitti path_to_vocabulary path_to_settings path_to_sequence" << endl;
-        return 1;
-    }
-
-    // Retrieve paths to images
-    vector<string> vstrImageLeft;
-    vector<string> vstrImageRight;
-    vector<double> vTimestamps;
-    LoadImages(string(argv[3]), vstrImageLeft, vstrImageRight, vTimestamps);
-
-    const int nImages = vstrImageLeft.size();
-
-    // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::STEREO,true);
-
-    // Vector for tracking time statistics
-    vector<float> vTimesTrack;
-    vTimesTrack.resize(nImages);
-
-    cout << endl << "-------" << endl;
-    cout << "Start processing sequence ..." << endl;
-    cout << "Images in the sequence: " << nImages << endl << endl;   
-
-    // Main loop
-    cv::Mat imLeft, imRight;
-    for(int ni=0; ni<nImages; ni++)
-    {
-        // Read left and right images from file
-        imLeft = cv::imread(vstrImageLeft[ni],CV_LOAD_IMAGE_UNCHANGED);
-        imRight = cv::imread(vstrImageRight[ni],CV_LOAD_IMAGE_UNCHANGED);
-        double tframe = vTimestamps[ni];
-
-        if(imLeft.empty())
-        {
-            cerr << endl << "Failed to load image at: "
-                 << string(vstrImageLeft[ni]) << endl;
-            return 1;
-        }
-
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
-#endif
-
-        // Pass the images to the SLAM system
-        SLAM.TrackStereo(imLeft,imRight,tframe);
-
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
-#endif
-
-        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-
-        vTimesTrack[ni]=ttrack;
-
-        // Wait to load the next frame
-        double T=0;
-        if(ni<nImages-1)
-            T = vTimestamps[ni+1]-tframe;
-        else if(ni>0)
-            T = tframe-vTimestamps[ni-1];
-
-        if(ttrack<T)
-            std::this_thread::sleep_for(std::chrono::microseconds(static_cast<size_t>((T-ttrack)*1e6)));
-    }
-
-    // Stop all threads
-    SLAM.Shutdown();
-
-    // Tracking time statistics
-    sort(vTimesTrack.begin(),vTimesTrack.end());
-    float totaltime = 0;
-    for(int ni=0; ni<nImages; ni++)
-    {
-        totaltime+=vTimesTrack[ni];
-    }
-    cout << "-------" << endl << endl;
-    cout << "median tracking time: " << vTimesTrack[nImages/2] << endl;
-    cout << "mean tracking time: " << totaltime/nImages << endl;
-
-    // Save camera trajectory
-    SLAM.SaveTrajectoryKITTI("CameraTrajectory.txt");
-
+  MoveSenseCamera *camera = new MoveSenseCamera(0);
+  cv::Mat left,right,disparity;
+  if(false == initCamera(camera,left,right,disparity))
+  {
     return 0;
+  }
+
+  // Create SLAM system. It initializes all system threads and gets ready to process frames.
+  ORB_SLAM2::System SLAM("Vocabulary/ORBvoc.bin","Examples/CS480/CS480.yaml",ORB_SLAM2::System::STEREO,true,(bool)atoi(argv[1])); 
+
+  sigset(SIGINT,(__sighandler_t)exitHandler);
+
+  while(handexit)
+  {
+    //get image frome camera
+    getImage(camera,left,right,disparity);
+
+    // Pass the images to the SLAM system
+    SLAM.TrackStereo(left,right,0);
+  }
+  // Stop all threads
+  SLAM.Shutdown();
+
+  // Save camera trajectory
+  SLAM.SaveTrajectoryKITTI("CameraTrajectory.txt");
+
+  //close camera
+  camera->StopStream();
+  camera->Close();
+  delete camera;
+
+  return 0;
 }
 
-void LoadImages(const string &strPathToSequence, vector<string> &vstrImageLeft,
-                vector<string> &vstrImageRight, vector<double> &vTimestamps)
+static __sighandler_t exitHandler()
 {
-    ifstream fTimes;
-    string strPathTimeFile = strPathToSequence + "/times.txt";
-    fTimes.open(strPathTimeFile.c_str());
-    while(!fTimes.eof())
+  handexit = 0;
+  return 0;
+}
+
+static bool initCamera(MoveSenseCamera *camera, cv::Mat &left, cv::Mat &right, cv::Mat &disparity)
+{
+  if (!camera->IsAvailable())
+  {
+    cout << "No camera connected..." << endl;
+    return false;
+  }
+  else
+  {
+    cout << "camera connected" << endl;
+  }
+
+  int mode = CAMERA_LR;
+  int res = camera->SetMode(mode);
+  if (res != MS_SUCCESS)
+  {
+    cout << "The mode is not supported..." << endl;
+    return false;
+  }
+  else
+  {
+    cout << "The mode is " << mode << endl;
+    cout << "0 = CAMERA_LR" << endl
+         << "1 = CAMERA_LD" << endl
+         << "2 = CAMERA_LRD" << endl
+         << "3 = CAMERA_LR_HD" << endl;
+  }
+
+  //Open camera
+  if (camera->Open() != MS_SUCCESS)
+  {
+    cout << "Open camera failed!" << endl;
+    camera->Close();
+    delete camera;
+    return false;
+  }
+  else
+  {
+    cout << "Open camera successfully" << endl;
+  }
+
+  camera->StartStream();
+  camera->SetStereoRectify(true);
+
+  //Get camera setting
+  Resolution resolution = camera->GetResolution();
+  int w = resolution.width;
+  int h = resolution.height;
+  int bitDepth = camera->GetBitDepth();
+  if( bitDepth != 8 && bitDepth != 16 )
+  {
+    cout << "bitDepth illegal (should be 8 or 16)!" << endl;
+    camera->StopStream();
+    camera->Close();
+    delete camera;
+    return false;
+  }
+  
+  left.create(h,w,CV_8UC1);
+  right.create(h,w,CV_8UC1);
+  disparity.create(h,w,CV_16UC1);
+
+  return true;
+}
+
+static void getImage(MoveSenseCamera *camera, cv::Mat &left, cv::Mat &right, cv::Mat &disparity)
+{
+  int len = camera->GetImageDataLength();
+  int res = camera->GetImageData(left.data, right.data, disparity.data, len);
+
+  if(res == MS_SUCCESS)
+  {
+    frameCnt++;
+
+    if (frameCnt == 50)
     {
-        string s;
-        getline(fTimes,s);
-        if(!s.empty())
-        {
-            stringstream ss;
-            ss << s;
-            double t;
-            ss >> t;
-            vTimestamps.push_back(t);
-        }
+      time2 = (double)cv::getTickCount();
+      timeT = (time2-time1)/(double)cv::getTickFrequency();
+      cout << "fps: " << (frameCnt)*1.0/timeT << endl;
+
+      frameCnt = 0;
+      time1 = time2;
     }
-
-    string strPrefixLeft = strPathToSequence + "/image_0/";
-    string strPrefixRight = strPathToSequence + "/image_1/";
-
-    const int nTimes = vTimestamps.size();
-    vstrImageLeft.resize(nTimes);
-    vstrImageRight.resize(nTimes);
-
-    for(int i=0; i<nTimes; i++)
-    {
-        stringstream ss;
-        ss << setfill('0') << setw(6) << i;
-        vstrImageLeft[i] = strPrefixLeft + ss.str() + ".png";
-        vstrImageRight[i] = strPrefixRight + ss.str() + ".png";
-    }
+  }
+  else if (res == MS_TIMEOUT)
+  {
+    cout << "GetImageData: timeout" << endl;
+  }
+  else
+  {
+    cout << "GetImageData: failed" << endl;
+  }
 }

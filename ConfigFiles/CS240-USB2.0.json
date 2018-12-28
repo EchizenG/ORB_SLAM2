@@ -1,0 +1,31 @@
+{
+
+	"default":
+	{
+		"resolution": {"w": 320, "h": 240},
+		"framerate": 50,
+		"mode": "LD"
+	},
+	
+	"resolution":
+	[
+		{"w": 320, "h": 240},
+		{"w": 160, "h": 120}
+	],
+	
+	"framerate":
+	[
+		25,
+		50,
+		100
+	],
+	
+	"mode":
+	[
+		"LR",
+		"LD",
+		"LRD"
+	]
+	
+}
+ 
